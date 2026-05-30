@@ -11,6 +11,7 @@ import tempfile
 import threading
 import sys
 import urllib.request
+from tkinter import messagebox
 
 # --- Zentrale Pfade ---
 LUTRIS_CONFIG_DIR = os.path.expanduser("~/.config/lutris/games")
@@ -53,7 +54,7 @@ app_config = lade_einstellungen()
 def github_update_pruefen():
     # --- NUR DIE URL HIER EINTRAGEN ---
     # (Denk daran, den Link von der "Raw"-Ansicht der Datei zu nehmen)
-    GITHUB_RAW_URL = "https://raw.githubusercontent.com/DEIN_NAME/DEIN_REPO/main/lutrismgmt.py"
+    GITHUB_RAW_URL = "https://raw.githubusercontent.com/DukyNuky/-lutris-mgmt/refs/heads/main/lutrismgmt.py"
 
     try:
         fenster.config(cursor="watch")
