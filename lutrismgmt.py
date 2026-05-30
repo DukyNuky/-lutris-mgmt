@@ -13,6 +13,7 @@ import sys
 import urllib.request
 from tkinter import messagebox
 
+
 # --- Zentrale Pfade ---
 LUTRIS_CONFIG_DIR = os.path.expanduser("~/.config/lutris/games")
 LUTRIS_LOCAL_SHARE = os.path.expanduser("~/.local/share/lutris")
