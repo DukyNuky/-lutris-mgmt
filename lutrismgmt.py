@@ -10,6 +10,7 @@ import json
 import tempfile
 import threading
 import sys
+import urllib.request
 
 # --- Zentrale Pfade ---
 LUTRIS_CONFIG_DIR = os.path.expanduser("~/.config/lutris/games")
@@ -49,44 +50,56 @@ def speichere_einstellungen(config_dict):
 
 app_config = lade_einstellungen()
 
-# ==========================================
-# NEU: GITHUB UPDATE FUNKTION FÜR GUI
-# ==========================================
 def github_update_pruefen():
-    # 1. Prüfen, ob das Tool wirklich über 'git clone' geladen wurde
-    git_ordner = os.path.join(script_dir, ".git")
-    if not os.path.exists(git_ordner):
-        messagebox.showwarning("Update nicht möglich", 
-                               "Dieser Ordner ist kein Git-Repository.\n\n"
-                               "Damit das Update funktioniert, musst du das Tool "
-                               "einmalig im Terminal mit 'git clone <deine-github-url>' "
-                               "herunterladen.")
-        return
+    # --- DEINE GITHUB DATEN HIER EINTRAGEN ---
+    # Die URL bekommst du, wenn du auf GitHub in der Datei auf "Raw" klickst.
+    GITHUB_RAW_URL = "https://raw.githubusercontent.com/DukyNuky/-lutris-mgmt/refs/heads/main/lutrismgmt.py"
+    
+    # Dein GitHub Personal Access Token (mit Berechtigung für das private Repo)
+    GITHUB_TOKEN = "GHSAT0AAAAAAD6S2MZD62GTEDLIL5ECJK2I2Q3K5SA" 
+    # -----------------------------------------
 
     try:
-        fenster.config(cursor="watch") # Mauszeiger auf "Laden" setzen
+        fenster.config(cursor="watch")
         fenster.update()
 
-        # 2. Den Git Pull Befehl ausführen
-        result = subprocess.run(["git", "pull"], capture_output=True, text=True, check=True, cwd=script_dir)
-        
-        # 3. Das Ergebnis auswerten
-        if "Already up to date." in result.stdout or "Bereits aktuell" in result.stdout:
+        # 1. Anfrage vorbereiten und Token zur Authentifizierung anhängen
+        req = urllib.request.Request(GITHUB_RAW_URL)
+        req.add_header("Authorization", f"token {GITHUB_TOKEN}")
+
+        # 2. Neuen Code von GitHub herunterladen
+        with urllib.request.urlopen(req) as response:
+            neuer_code = response.read().decode('utf-8')
+
+        # Sicherheits-Check: Ist das wirklich unser Python-Skript?
+        if "import tkinter" not in neuer_code:
+            raise ValueError("Heruntergeladene Datei scheint kein gültiges Skript zu sein.")
+
+        # 3. Aktuellen Code auf der Festplatte lesen, um zu prüfen, ob es Änderungen gab
+        aktuelle_datei = os.path.abspath(__file__)
+        with open(aktuelle_datei, 'r', encoding='utf-8') as f:
+            aktueller_code = f.read()
+
+        # 4. Vergleichen
+        if neuer_code == aktueller_code:
             messagebox.showinfo("Update", "Das Tool ist bereits auf dem neuesten Stand!")
-        else:
-            messagebox.showinfo("Update erfolgreich!", 
-                                "Neuer Code wurde von GitHub geladen!\n\n"
-                                "Das Tool startet sich jetzt neu, um die Änderungen zu übernehmen.")
-            
-            # Skript überschreibt sich im RAM mit der neuen Datei und startet neu
-            os.execl(sys.executable, sys.executable, *sys.argv)
-            
-    except subprocess.CalledProcessError as e:
-        messagebox.showerror("Git Fehler", f"Konnte nicht aktualisieren. Gibt es ungespeicherte lokale Änderungen?\n\nDetails: {e.stderr}")
+            return
+
+        # 5. Wenn es neu ist: Eigene Datei überschreiben
+        with open(aktuelle_datei, 'w', encoding='utf-8') as f:
+            f.write(neuer_code)
+
+        messagebox.showinfo("Update erfolgreich!", 
+                            "Die neueste Version wurde direkt von GitHub geladen!\n\n"
+                            "Das Tool startet sich jetzt neu.")
+        
+        # 6. Tool direkt neu starten
+        os.execl(sys.executable, sys.executable, *sys.argv)
+
     except Exception as e:
-        messagebox.showerror("Fehler", f"Ein unerwarteter Fehler ist aufgetreten:\n{e}")
+        messagebox.showerror("Fehler beim Update", f"Konnte die Datei nicht herunterladen.\nPrüfe Token und URL!\n\nDetails: {e}")
     finally:
-        fenster.config(cursor="") # Mauszeiger zurücksetzen
+        fenster.config(cursor="")
 
 # ==========================================
 # FUNKTIONEN FÜR INTEGRATION & IMPORT
