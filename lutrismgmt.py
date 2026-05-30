@@ -51,23 +51,19 @@ def speichere_einstellungen(config_dict):
 app_config = lade_einstellungen()
 
 def github_update_pruefen():
-    # --- DEINE GITHUB DATEN HIER EINTRAGEN ---
-    # Die URL bekommst du, wenn du auf GitHub in der Datei auf "Raw" klickst.
-    GITHUB_RAW_URL = "https://raw.githubusercontent.com/DukyNuky/-lutris-mgmt/refs/heads/main/lutrismgmt.py"
-    
-    # Dein GitHub Personal Access Token (mit Berechtigung für das private Repo)
-    GITHUB_TOKEN = "GHSAT0AAAAAAD6S2MZD62GTEDLIL5ECJK2I2Q3K5SA" 
-    # -----------------------------------------
+    # --- NUR DIE URL HIER EINTRAGEN ---
+    # (Denk daran, den Link von der "Raw"-Ansicht der Datei zu nehmen)
+    GITHUB_RAW_URL = "https://raw.githubusercontent.com/DEIN_NAME/DEIN_REPO/main/lutrismgmt.py"
 
     try:
         fenster.config(cursor="watch")
         fenster.update()
 
-        # 1. Anfrage vorbereiten und Token zur Authentifizierung anhängen
+        # Anfrage bauen (wir geben uns als Browser aus, damit GitHub nicht blockt)
         req = urllib.request.Request(GITHUB_RAW_URL)
-        req.add_header("Authorization", f"token {GITHUB_TOKEN}")
+        req.add_header('User-Agent', 'Mozilla/5.0') 
 
-        # 2. Neuen Code von GitHub herunterladen
+        # Code von der öffentlichen URL herunterladen
         with urllib.request.urlopen(req) as response:
             neuer_code = response.read().decode('utf-8')
 
@@ -75,17 +71,17 @@ def github_update_pruefen():
         if "import tkinter" not in neuer_code:
             raise ValueError("Heruntergeladene Datei scheint kein gültiges Skript zu sein.")
 
-        # 3. Aktuellen Code auf der Festplatte lesen, um zu prüfen, ob es Änderungen gab
+        # Aktuellen Code auf der Festplatte lesen
         aktuelle_datei = os.path.abspath(__file__)
         with open(aktuelle_datei, 'r', encoding='utf-8') as f:
             aktueller_code = f.read()
 
-        # 4. Vergleichen
+        # Vergleichen: Hat sich etwas geändert?
         if neuer_code == aktueller_code:
             messagebox.showinfo("Update", "Das Tool ist bereits auf dem neuesten Stand!")
             return
 
-        # 5. Wenn es neu ist: Eigene Datei überschreiben
+        # Eigene Datei mit dem neuen Code überschreiben
         with open(aktuelle_datei, 'w', encoding='utf-8') as f:
             f.write(neuer_code)
 
@@ -93,11 +89,11 @@ def github_update_pruefen():
                             "Die neueste Version wurde direkt von GitHub geladen!\n\n"
                             "Das Tool startet sich jetzt neu.")
         
-        # 6. Tool direkt neu starten
+        # Tool direkt neu starten
         os.execl(sys.executable, sys.executable, *sys.argv)
 
     except Exception as e:
-        messagebox.showerror("Fehler beim Update", f"Konnte die Datei nicht herunterladen.\nPrüfe Token und URL!\n\nDetails: {e}")
+        messagebox.showerror("Fehler beim Update", f"Konnte nicht aktualisieren.\nPrüfe die URL!\n\nDetails: {e}")
     finally:
         fenster.config(cursor="")
 
