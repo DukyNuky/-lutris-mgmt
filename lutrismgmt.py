@@ -49,6 +49,48 @@ def speichere_einstellungen(config_dict):
 
 app_config = lade_einstellungen()
 
+# ==========================================
+# NEU: GITHUB UPDATE FUNKTION FÜR GUI
+# ==========================================
+def github_update_pruefen():
+    # 1. Prüfen, ob das Tool wirklich über 'git clone' geladen wurde
+    git_ordner = os.path.join(script_dir, ".git")
+    if not os.path.exists(git_ordner):
+        messagebox.showwarning("Update nicht möglich", 
+                               "Dieser Ordner ist kein Git-Repository.\n\n"
+                               "Damit das Update funktioniert, musst du das Tool "
+                               "einmalig im Terminal mit 'git clone <deine-github-url>' "
+                               "herunterladen.")
+        return
+
+    try:
+        fenster.config(cursor="watch") # Mauszeiger auf "Laden" setzen
+        fenster.update()
+
+        # 2. Den Git Pull Befehl ausführen
+        result = subprocess.run(["git", "pull"], capture_output=True, text=True, check=True, cwd=script_dir)
+        
+        # 3. Das Ergebnis auswerten
+        if "Already up to date." in result.stdout or "Bereits aktuell" in result.stdout:
+            messagebox.showinfo("Update", "Das Tool ist bereits auf dem neuesten Stand!")
+        else:
+            messagebox.showinfo("Update erfolgreich!", 
+                                "Neuer Code wurde von GitHub geladen!\n\n"
+                                "Das Tool startet sich jetzt neu, um die Änderungen zu übernehmen.")
+            
+            # Skript überschreibt sich im RAM mit der neuen Datei und startet neu
+            os.execl(sys.executable, sys.executable, *sys.argv)
+            
+    except subprocess.CalledProcessError as e:
+        messagebox.showerror("Git Fehler", f"Konnte nicht aktualisieren. Gibt es ungespeicherte lokale Änderungen?\n\nDetails: {e.stderr}")
+    except Exception as e:
+        messagebox.showerror("Fehler", f"Ein unerwarteter Fehler ist aufgetreten:\n{e}")
+    finally:
+        fenster.config(cursor="") # Mauszeiger zurücksetzen
+
+# ==========================================
+# FUNKTIONEN FÜR INTEGRATION & IMPORT
+# ==========================================
 def starter_erstellen():
     script_path = os.path.abspath(sys.argv[0])
     icon_path = os.path.join(os.path.dirname(script_path), "lutris_logo.png")
@@ -67,15 +109,11 @@ Categories=Game;Utility;
         os.makedirs(APPLICATIONS_DIR, exist_ok=True)
         with open(desktop_file_path, "w") as f:
             f.write(content)
-        # Ausführbar machen
         subprocess.run(["chmod", "+x", desktop_file_path])
         messagebox.showinfo("Erfolg", "Der Starter wurde erfolgreich im Startmenü angelegt!")
     except Exception as e:
         messagebox.showerror("Fehler", f"Konnte Starter nicht erstellen: {e}")
 
-# ==========================================
-# FUNKTIONEN FÜR IMPORT
-# ==========================================
 def datei_waehlen():
     dateipfad = filedialog.askopenfilename(title="Wähle die .exe Datei des Spiels", filetypes=[("Windows-Spiele", "*.exe"), ("Alle Dateien", "*.*")])
     if dateipfad:
@@ -239,7 +277,6 @@ def hole_restore_ordner():
     if not os.path.exists(backup_dir):
         return None
     
-    # Sucht in den neuen Unterordnern, sonst direkt im Hauptordner
     prof_ordner = os.path.join(backup_dir, "Lutris_Configs")
     prof_only = os.path.join(backup_dir, "Profile_Only")
     
@@ -287,7 +324,7 @@ fenster.title("Andreas' Lutris Studio")
 if os.path.exists(icon_path):
     icon = tk.PhotoImage(file=icon_path)
     fenster.iconphoto(True, icon)
-# Fensterhöhe etwas vergrößert, damit der Restore-Bereich Platz hat
+
 fenster.geometry("750x660")
 fenster.configure(bg=BG_COLOR)
 fenster.resizable(False, False)
@@ -329,6 +366,11 @@ btn_nav_import.pack(fill=tk.X, padx=10, pady=5)
 
 btn_nav_backup = StyledButton(sidebar, text="💾 Backup & Restore", command=lambda: zeige_frame(frame_backup))
 btn_nav_backup.pack(fill=tk.X, padx=10, pady=5)
+
+# --- NEU: Update Button ganz unten in der Sidebar ---
+btn_nav_update = StyledButton(sidebar, text="🔄 Update prüfen", command=github_update_pruefen)
+btn_nav_update.pack(side=tk.BOTTOM, fill=tk.X, padx=10, pady=20)
+
 
 # --- TAB 1: IMPORTER ---
 tk.Label(frame_import, text="Neues Spiel hinzufügen", font=font_titel, bg=BG_COLOR, fg=TEXT_COLOR).pack(anchor="w", pady=(0, 20))
