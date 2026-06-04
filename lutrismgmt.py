@@ -8,10 +8,8 @@ import glob
 import re
 import json
 import tempfile
-import threading
 import sys
 import urllib.request
-from tkinter import messagebox
 
 # --- Zentrale Pfade ---
 LUTRIS_CONFIG_DIR = os.path.expanduser("~/.config/lutris/games")
@@ -116,11 +114,11 @@ Categories=Game;Utility;
     except Exception as e:
         messagebox.showerror("Fehler", f"Konnte Starter nicht erstellen: {e}")
 
-def datei_waehlen():
+def datei_waehlen(ziel_eingabe):
     dateipfad = filedialog.askopenfilename(title="Wähle die .exe Datei des Spiels", filetypes=[("Windows-Spiele", "*.exe"), ("Alle Dateien", "*.*")])
     if dateipfad:
-        pfad_eingabe.delete(0, tk.END)
-        pfad_eingabe.insert(0, dateipfad)
+        ziel_eingabe.delete(0, tk.END)
+        ziel_eingabe.insert(0, dateipfad)
 
 def skript_erstellen():
     name = name_eingabe.get().strip()
@@ -172,33 +170,86 @@ script:
         messagebox.showerror("Fehler", f"Ein Fehler ist aufgetreten:\n{e}")
 
 # ==========================================
+# FUNKTIONEN FÜR DEN SETUP-INSTALLER (NEU)
+# ==========================================
+def finde_installer_yml():
+    yaml_dateien = glob.glob(os.path.join(LUTRIS_CONFIG_DIR, "*.yml"))
+    for datei in yaml_dateien:
+        try:
+            with open(datei, 'r', encoding='utf-8') as f:
+                inhalt = f.read()
+            # Sucht nach name: "installer" oder name: installer (Groß-/Kleinschreibung egal)
+            if re.search(r'(?m)^name:\s*"?installer"?\s*$', inhalt, re.IGNORECASE):
+                return datei
+        except Exception:
+            pass
+    return None
+
+def installer_exe_speichern():
+    neue_exe = inst_exe_eingabe.get().strip()
+    if not neue_exe or not os.path.exists(neue_exe):
+        messagebox.showwarning("Fehler", "Bitte wähle eine gültige Setup.exe aus!")
+        return
+
+    yml_pfad = finde_installer_yml()
+    if not yml_pfad:
+        messagebox.showerror("Fehler", "Konnte kein Spiel mit dem Namen 'installer' in Lutris finden!\nBitte stelle sicher, dass es ein Profil mit exakt diesem Namen gibt.")
+        return
+
+    neues_working_dir = os.path.dirname(neue_exe)
+
+    try:
+        with open(yml_pfad, 'r', encoding='utf-8') as f:
+            inhalt = f.read()
+            
+        # .exe und working_dir anpassen
+        inhalt = re.sub(r'(?m)^([ \t]*exe:\s*)"?[^"\n]+"?(.*)$', rf'\g<1>"{neue_exe}"\g<2>', inhalt)
+        inhalt = re.sub(r'(?m)^([ \t]*working_dir:\s*)"?[^"\n]+"?(.*)$', rf'\g<1>"{neues_working_dir}"\g<2>', inhalt)
+        
+        with open(yml_pfad, 'w', encoding='utf-8') as f:
+            f.write(inhalt)
+            
+        # Datenbank aktualisieren
+        subprocess.Popen(["lutris", "-i", yml_pfad])
+        messagebox.showinfo("Erfolg", "Das Installer-Profil wurde aktualisiert!")
+        
+    except Exception as e:
+        messagebox.showerror("Fehler", f"Konnte das Profil nicht anpassen:\n{e}")
+
+def installer_starten():
+    yml_pfad = finde_installer_yml()
+    if not yml_pfad:
+        messagebox.showerror("Fehler", "Konnte kein Spiel mit dem Namen 'installer' finden!")
+        return
+        
+    try:
+        slug = "installer" # Standard-Fallback
+        with open(yml_pfad, 'r', encoding='utf-8') as f:
+            match = re.search(r'(?m)^game_slug:\s*"?([^"\n]+)"?', f.read())
+            if match: 
+                slug = match.group(1).strip()
+                
+        subprocess.Popen(["lutris", f"lutris:rungame/{slug}"])
+    except Exception as e:
+        messagebox.showerror("Fehler", f"Konnte Installer nicht starten:\n{e}")
+
+# ==========================================
 # FUNKTIONEN FÜR SUNSHINE
 # ==========================================
 def sunshine_sync_starten():
-    # 1. Prüfen, ob Sunshine im Hintergrund läuft
     try:
-        # pgrep sucht case-insensitive (-i) nach dem Prozess "sunshine"
         check_sunshine = subprocess.run(["pgrep", "-i", "sunshine"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        
-        # returncode 0 bedeutet: Prozess gefunden. Alles andere bedeutet: läuft nicht.
         if check_sunshine.returncode != 0:
-            messagebox.showwarning(
-                "Sunshine nicht aktiv", 
-                "Bitte starte zuerst Sunshine!\n\nDas Tool kann die Spiele nicht übergeben, solange der Sunshine-Dienst nicht läuft."
-            )
-            return # Bricht die Funktion hier ab
+            messagebox.showwarning("Sunshine nicht aktiv", "Bitte starte zuerst Sunshine!\n\nDas Tool kann die Spiele nicht übergeben, solange der Sunshine-Dienst nicht läuft.")
+            return 
     except Exception as e:
-        # Falls der pgrep-Befehl aus unerfindlichen Gründen fehlschlägt, loggen wir das nur
-        print(f"Hinweis: Prozessprüfung übersprungen ({e})")
+        pass
 
-    # 2. Prüfen, ob das Tool existiert
     tool_pfad = os.path.join(script_dir, "lutristosunshine")
-    
     if not os.path.exists(tool_pfad):
         messagebox.showerror("Fehler", f"Das Tool wurde nicht gefunden:\n{tool_pfad}\n\nBitte stelle sicher, dass es im selben Ordner wie dieses Skript liegt.")
         return
         
-    # 3. Tool in einem neuen Terminal starten
     try:
         terminals = [
             ["gnome-terminal", "--", tool_pfad],
@@ -207,9 +258,7 @@ def sunshine_sync_starten():
             ["x-terminal-emulator", "-e", tool_pfad],
             ["xterm", "-e", tool_pfad]
         ]
-
         erfolgreich_gestartet = False
-        
         for cmd in terminals:
             try:
                 subprocess.Popen(cmd)
@@ -276,26 +325,20 @@ def backup_komplett():
 
 def yml_pfad_anpassen_und_installieren(yml_pfad):
     spielname_fallback = os.path.basename(yml_pfad).replace(".yml", "")
-    
     try:
         with open(yml_pfad, 'r', encoding='utf-8') as f:
             inhalt = f.read()
-            
         name_match = re.search(r'(?m)^name:\s*"?([^"\n]+)"?', inhalt)
         spielname = name_match.group(1).strip() if name_match else spielname_fallback
-        
         prefix_match = re.search(r'(?m)^[ \t]*prefix:\s*"?([^"\n]+)"?', inhalt)
         altes_prefix = prefix_match.group(1).strip() if prefix_match else os.path.join(PREFIX_DIR, "Goldberg")
-        
         runner_match = re.search(r'(?m)^runner:\s*"?([^"\n]+)"?', inhalt)
         runner = runner_match.group(1).strip() if runner_match else "wine"
-
     except Exception as e:
         messagebox.showerror("Fehler", f"Konnte Backup {spielname_fallback} nicht lesen:\n{e}")
         return False
 
     messagebox.showinfo("Pfad anpassen", f"Wo liegt nun die .exe für das Spiel:\n'{spielname}'?")
-    
     neue_exe = filedialog.askopenfilename(title=f"Neue .exe für {spielname}", filetypes=[("Windows-Spiele", "*.exe"), ("Alle Dateien", "*.*")])
     if not neue_exe:
         return False 
@@ -315,10 +358,8 @@ script:
     working_dir: "{neues_working_dir}"
     prefix: "{altes_prefix}"
 """
-    
     temp_dir = tempfile.gettempdir()
     temp_yml = os.path.join(temp_dir, f"restore_{slug}.yml")
-    
     try:
         with open(temp_yml, 'w', encoding='utf-8') as f:
             f.write(yaml_inhalt)
@@ -330,16 +371,11 @@ script:
 
 def hole_restore_ordner():
     backup_dir = aktueller_backup_pfad_var.get()
-    if not os.path.exists(backup_dir):
-        return None
-    
+    if not os.path.exists(backup_dir): return None
     prof_ordner = os.path.join(backup_dir, "Lutris_Configs")
     prof_only = os.path.join(backup_dir, "Profile_Only")
-    
-    if os.path.exists(prof_ordner):
-        return prof_ordner
-    elif os.path.exists(prof_only):
-        return prof_only
+    if os.path.exists(prof_ordner): return prof_ordner
+    elif os.path.exists(prof_only): return prof_only
     return backup_dir
 
 def restore_einzeln():
@@ -347,7 +383,6 @@ def restore_einzeln():
     if not such_ordner:
         messagebox.showwarning("Fehler", "Backup-Ordner existiert nicht.")
         return
-        
     yml_pfad = filedialog.askopenfilename(initialdir=such_ordner, title="Wähle das Profil (.yml)", filetypes=[("Lutris Config", "*.yml")])
     if yml_pfad:
         yml_pfad_anpassen_und_installieren(yml_pfad)
@@ -357,12 +392,10 @@ def restore_bulk():
     if not such_ordner:
         messagebox.showwarning("Fehler", "Backup-Ordner existiert nicht.")
         return
-        
     yaml_dateien = glob.glob(os.path.join(such_ordner, "*.yml"))
     if not yaml_dateien:
         messagebox.showinfo("Info", "Keine Backups (.yml) gefunden.")
         return
-        
     antwort = messagebox.askyesno("Bulk Restore", f"Es wurden {len(yaml_dateien)} Backups gefunden.\nDas Skript wird dich nun für JEDES Spiel nach der neuen .exe fragen.\n\nMöchtest du fortfahren?")
     if antwort:
         erfolgreich = 0
@@ -385,18 +418,17 @@ fenster.geometry("750x660")
 fenster.configure(bg=BG_COLOR)
 fenster.resizable(False, False)
 
-# --- Fonts ---
+# --- Fonts & Styles ---
 font_titel = ("Helvetica Neue", 16, "bold")
 font_sub = ("Helvetica Neue", 12, "bold")
 font_text = ("Helvetica Neue", 10)
 
 # --- UI Helfer ---
 def zeige_frame(frame):
-    # WICHTIG: Hier müssen alle existierenden Frames versteckt werden
     frame_import.pack_forget()
+    frame_installer.pack_forget()
     frame_backup.pack_forget()
     frame_sunshine.pack_forget()
-    # Und der gewünschte wird angezeigt
     frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
 
 class StyledButton(tk.Button):
@@ -409,22 +441,26 @@ class ActionButton(tk.Button):
         super().__init__(master, **kw)
         self.config(bg=SUCCESS_COLOR, fg="#11111b", activebackground="#8fce8a", activeforeground="#11111b", relief="flat", bd=0, font=("Helvetica Neue", 10, "bold"), pady=10, padx=20, cursor="hand2")
 
+
 # --- Layout Frames ---
 sidebar = tk.Frame(fenster, bg=SIDEBAR_COLOR, width=220)
 sidebar.pack(side=tk.LEFT, fill=tk.Y)
 sidebar.pack_propagate(False)
 
+frame_installer = tk.Frame(fenster, bg=BG_COLOR, padx=30, pady=30)
 frame_import = tk.Frame(fenster, bg=BG_COLOR, padx=30, pady=30)
 frame_backup = tk.Frame(fenster, bg=BG_COLOR, padx=30, pady=30)
-frame_sunshine = tk.Frame(fenster, bg=BG_COLOR, padx=30, pady=30) # NEUER FRAME
+frame_sunshine = tk.Frame(fenster, bg=BG_COLOR, padx=30, pady=30)
 
 # --- Sidebar Inhalt ---
 tk.Label(sidebar, text="LUTRIS\nSTUDIO", font=("Helvetica Neue", 18, "bold"), bg=SIDEBAR_COLOR, fg=ACCENT_COLOR, pady=30).pack()
 
-btn_nav_import = StyledButton(sidebar, text="🎮 Neues Spiel", command=lambda: zeige_frame(frame_import))
+btn_nav_installer = StyledButton(sidebar, text="💿 Setup Vorbereiten", command=lambda: zeige_frame(frame_installer))
+btn_nav_installer.pack(fill=tk.X, padx=10, pady=5)
+
+btn_nav_import = StyledButton(sidebar, text="🎮 Nach Setup Import", command=lambda: zeige_frame(frame_import))
 btn_nav_import.pack(fill=tk.X, padx=10, pady=5)
 
-# Neuer Button in der Sidebar
 btn_nav_sunshine = StyledButton(sidebar, text="☀️ Sunshine Sync", command=lambda: zeige_frame(frame_sunshine))
 btn_nav_sunshine.pack(fill=tk.X, padx=10, pady=5)
 
@@ -435,19 +471,38 @@ btn_nav_update = StyledButton(sidebar, text="🔄 Update prüfen", command=githu
 btn_nav_update.pack(side=tk.BOTTOM, fill=tk.X, padx=10, pady=20)
 
 
-# --- TAB 1: IMPORTER ---
+# --- TAB 1: INSTALLER (NEU) ---
+tk.Label(frame_installer, text="Setup Vorbereiten", font=font_titel, bg=BG_COLOR, fg=TEXT_COLOR).pack(anchor="w", pady=(0, 20))
+
+tk.Label(frame_installer, text="Hier kannst du die neue Setup.exe an dein festes\n'installer' Profil in Lutris übergeben.", font=font_text, bg=BG_COLOR, fg="gray", justify=tk.LEFT).pack(anchor="w", pady=(0, 20))
+
+tk.Label(frame_installer, text="Neue Setup.exe auswählen", font=font_text, bg=BG_COLOR, fg=ACCENT_COLOR).pack(anchor="w")
+inst_exe_box = tk.Frame(frame_installer, bg=BG_COLOR)
+inst_exe_box.pack(anchor="w", pady=(5, 25), fill=tk.X)
+
+inst_exe_eingabe = tk.Entry(inst_exe_box, font=font_text, width=32, bg=BTN_BG, fg=TEXT_COLOR, insertbackground=TEXT_COLOR, relief="flat")
+inst_exe_eingabe.pack(side=tk.LEFT, ipady=5, padx=(0,10))
+StyledButton(inst_exe_box, text="Durchsuchen", command=lambda: datei_waehlen(inst_exe_eingabe)).pack(side=tk.LEFT)
+
+inst_btn_box = tk.Frame(frame_installer, bg=BG_COLOR)
+inst_btn_box.pack(anchor="w", fill=tk.X)
+StyledButton(inst_btn_box, text="💾 Setup in Lutris eintragen", command=installer_exe_speichern).pack(side=tk.LEFT, padx=(0, 15))
+ActionButton(inst_btn_box, text="🚀 Installer starten", command=installer_starten).pack(side=tk.LEFT)
+
+
+# --- TAB 2: IMPORTER ---
 tk.Label(frame_import, text="Neues Spiel hinzufügen", font=font_titel, bg=BG_COLOR, fg=TEXT_COLOR).pack(anchor="w", pady=(0, 20))
 
 tk.Label(frame_import, text="Name des Spiels", font=font_text, bg=BG_COLOR, fg=ACCENT_COLOR).pack(anchor="w")
 name_eingabe = tk.Entry(frame_import, font=font_text, width=45, bg=BTN_BG, fg=TEXT_COLOR, insertbackground=TEXT_COLOR, relief="flat")
 name_eingabe.pack(anchor="w", pady=(5, 15), ipady=5)
 
-tk.Label(frame_import, text="Ausführbare Datei (.exe)", font=font_text, bg=BG_COLOR, fg=ACCENT_COLOR).pack(anchor="w")
+tk.Label(frame_import, text="Fertige Ausführbare Datei (.exe)", font=font_text, bg=BG_COLOR, fg=ACCENT_COLOR).pack(anchor="w")
 pfad_box = tk.Frame(frame_import, bg=BG_COLOR)
 pfad_box.pack(anchor="w", pady=(5, 15), fill=tk.X)
 pfad_eingabe = tk.Entry(pfad_box, font=font_text, width=32, bg=BTN_BG, fg=TEXT_COLOR, insertbackground=TEXT_COLOR, relief="flat")
 pfad_eingabe.pack(side=tk.LEFT, ipady=5, padx=(0,10))
-StyledButton(pfad_box, text="Durchsuchen", command=datei_waehlen).pack(side=tk.LEFT)
+StyledButton(pfad_box, text="Durchsuchen", command=lambda: datei_waehlen(pfad_eingabe)).pack(side=tk.LEFT)
 
 eigenes_prefix_var = tk.BooleanVar()
 tk.Checkbutton(frame_import, text="Eigenes Präfix erstellen (Sonst Goldberg)", variable=eigenes_prefix_var, bg=BG_COLOR, fg=TEXT_COLOR, selectcolor=BTN_BG, activebackground=BG_COLOR, activeforeground=TEXT_COLOR).pack(anchor="w", pady=15)
@@ -455,9 +510,8 @@ tk.Checkbutton(frame_import, text="Eigenes Präfix erstellen (Sonst Goldberg)", 
 ActionButton(frame_import, text="Zu Lutris hinzufügen", command=skript_erstellen).pack(anchor="w", pady=20)
 
 
-# --- TAB 2: BACKUP ---
+# --- TAB 3: BACKUP ---
 tk.Label(frame_backup, text="System Backup", font=font_titel, bg=BG_COLOR, fg=TEXT_COLOR).pack(anchor="w", pady=(0, 20))
-
 tk.Label(frame_backup, text="Backup Speicherort:", font=font_text, bg=BG_COLOR, fg=ACCENT_COLOR).pack(anchor="w")
 backup_box = tk.Frame(frame_backup, bg=BG_COLOR)
 backup_box.pack(anchor="w", pady=(5, 20), fill=tk.X)
@@ -467,7 +521,6 @@ tk.Entry(backup_box, textvariable=aktueller_backup_pfad_var, font=font_text, wid
 StyledButton(backup_box, text="Ändern", command=backup_ordner_aendern).pack(side=tk.LEFT)
 
 tk.Label(frame_backup, text="Sichern", font=font_sub, bg=BG_COLOR, fg=TEXT_COLOR).pack(anchor="w", pady=(10, 5))
-
 box1 = tk.Frame(frame_backup, bg=BG_COLOR)
 box1.pack(anchor="w", fill=tk.X, pady=5)
 StyledButton(box1, text="Nur Profile", command=backup_nur_profile).pack(side=tk.LEFT, padx=(0, 15))
@@ -479,9 +532,7 @@ ActionButton(box2, text="Vollständiges Backup", command=backup_komplett).pack(s
 tk.Label(box2, text="Profile, Spielzeit & GamePrefixes (.tar.gz)", bg=BG_COLOR, fg="gray", font=("Helvetica Neue", 9), justify=tk.LEFT).pack(side=tk.LEFT)
 
 tk.Frame(frame_backup, height=1, bg=BTN_BG).pack(fill=tk.X, pady=20)
-
 tk.Label(frame_backup, text="Wiederherstellen (Restore)", font=font_sub, bg=BG_COLOR, fg=TEXT_COLOR).pack(anchor="w", pady=(0, 10))
-
 box3 = tk.Frame(frame_backup, bg=BG_COLOR)
 box3.pack(anchor="w", fill=tk.X, pady=5)
 StyledButton(box3, text="Einzelnes Spiel", command=restore_einzeln).pack(side=tk.LEFT, padx=(0, 15))
@@ -494,22 +545,18 @@ tk.Label(box4, text="Stellt alle Spiele aus dem Backup nacheinander her", bg=BG_
 
 tk.Frame(frame_backup, height=1, bg=BTN_BG).pack(fill=tk.X, pady=20)
 tk.Label(frame_backup, text="System-Integration", font=font_sub, bg=BG_COLOR, fg=TEXT_COLOR).pack(anchor="w")
-
 box5 = tk.Frame(frame_backup, bg=BG_COLOR)
 box5.pack(anchor="w", fill=tk.X, pady=10)
 StyledButton(box5, text="App ins Startmenü einfügen", command=starter_erstellen).pack(side=tk.LEFT, padx=(0, 15))
 tk.Label(box5, text="Erstellt eine .desktop Datei für dein Menü", bg=BG_COLOR, fg="gray", font=("Helvetica Neue", 9)).pack(side=tk.LEFT)
 
 
-# --- TAB 3: SUNSHINE (NEU) ---
+# --- TAB 4: SUNSHINE ---
 tk.Label(frame_sunshine, text="Sunshine Sync", font=font_titel, bg=BG_COLOR, fg=TEXT_COLOR).pack(anchor="w", pady=(0, 20))
-
-tk.Label(frame_sunshine, text="Hier kannst du deine aktuellen Lutris-Spiele\ndirekt an Sunshine übergeben.", 
-         font=font_text, bg=BG_COLOR, fg=TEXT_COLOR, justify=tk.LEFT).pack(anchor="w", pady=(0, 20))
-
+tk.Label(frame_sunshine, text="Hier kannst du deine aktuellen Lutris-Spiele\ndirekt an Sunshine übergeben.", font=font_text, bg=BG_COLOR, fg=TEXT_COLOR, justify=tk.LEFT).pack(anchor="w", pady=(0, 20))
 ActionButton(frame_sunshine, text="Spiele synchronisieren", command=sunshine_sync_starten).pack(anchor="w", pady=10)
 
 
 # Startscreen festlegen
-zeige_frame(frame_import)
+zeige_frame(frame_installer)
 fenster.mainloop()
