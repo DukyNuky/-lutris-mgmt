@@ -347,4 +347,143 @@ def restore_bulk():
 
 
 # ==========================================
-# GUI AUFBAU (CUSTOM
+# GUI AUFBAU (CUSTOM DASHBOARD DESIGN)
+# ==========================================
+fenster = tk.Tk()
+fenster.title("Andreas' Lutris Studio")
+if os.path.exists(icon_path):
+    icon = tk.PhotoImage(file=icon_path)
+    fenster.iconphoto(True, icon)
+
+fenster.geometry("750x660")
+fenster.configure(bg=BG_COLOR)
+fenster.resizable(False, False)
+
+# --- Fonts ---
+font_titel = ("Helvetica Neue", 16, "bold")
+font_sub = ("Helvetica Neue", 12, "bold")
+font_text = ("Helvetica Neue", 10)
+
+# --- UI Helfer ---
+def zeige_frame(frame):
+    # WICHTIG: Hier müssen alle existierenden Frames versteckt werden
+    frame_import.pack_forget()
+    frame_backup.pack_forget()
+    frame_sunshine.pack_forget()
+    # Und der gewünschte wird angezeigt
+    frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
+
+class StyledButton(tk.Button):
+    def __init__(self, master, **kw):
+        super().__init__(master, **kw)
+        self.config(bg=BTN_BG, fg=TEXT_COLOR, activebackground=BTN_HOVER, activeforeground=TEXT_COLOR, relief="flat", bd=0, font=font_text, pady=8, padx=15, cursor="hand2")
+
+class ActionButton(tk.Button):
+    def __init__(self, master, **kw):
+        super().__init__(master, **kw)
+        self.config(bg=SUCCESS_COLOR, fg="#11111b", activebackground="#8fce8a", activeforeground="#11111b", relief="flat", bd=0, font=("Helvetica Neue", 10, "bold"), pady=10, padx=20, cursor="hand2")
+
+# --- Layout Frames ---
+sidebar = tk.Frame(fenster, bg=SIDEBAR_COLOR, width=220)
+sidebar.pack(side=tk.LEFT, fill=tk.Y)
+sidebar.pack_propagate(False)
+
+frame_import = tk.Frame(fenster, bg=BG_COLOR, padx=30, pady=30)
+frame_backup = tk.Frame(fenster, bg=BG_COLOR, padx=30, pady=30)
+frame_sunshine = tk.Frame(fenster, bg=BG_COLOR, padx=30, pady=30) # NEUER FRAME
+
+# --- Sidebar Inhalt ---
+tk.Label(sidebar, text="LUTRIS\nSTUDIO", font=("Helvetica Neue", 18, "bold"), bg=SIDEBAR_COLOR, fg=ACCENT_COLOR, pady=30).pack()
+
+btn_nav_import = StyledButton(sidebar, text="🎮 Neues Spiel", command=lambda: zeige_frame(frame_import))
+btn_nav_import.pack(fill=tk.X, padx=10, pady=5)
+
+# Neuer Button in der Sidebar
+btn_nav_sunshine = StyledButton(sidebar, text="☀️ Sunshine Sync", command=lambda: zeige_frame(frame_sunshine))
+btn_nav_sunshine.pack(fill=tk.X, padx=10, pady=5)
+
+btn_nav_backup = StyledButton(sidebar, text="💾 Backup & Restore", command=lambda: zeige_frame(frame_backup))
+btn_nav_backup.pack(fill=tk.X, padx=10, pady=5)
+
+btn_nav_update = StyledButton(sidebar, text="🔄 Update prüfen", command=github_update_pruefen)
+btn_nav_update.pack(side=tk.BOTTOM, fill=tk.X, padx=10, pady=20)
+
+
+# --- TAB 1: IMPORTER ---
+tk.Label(frame_import, text="Neues Spiel hinzufügen", font=font_titel, bg=BG_COLOR, fg=TEXT_COLOR).pack(anchor="w", pady=(0, 20))
+
+tk.Label(frame_import, text="Name des Spiels", font=font_text, bg=BG_COLOR, fg=ACCENT_COLOR).pack(anchor="w")
+name_eingabe = tk.Entry(frame_import, font=font_text, width=45, bg=BTN_BG, fg=TEXT_COLOR, insertbackground=TEXT_COLOR, relief="flat")
+name_eingabe.pack(anchor="w", pady=(5, 15), ipady=5)
+
+tk.Label(frame_import, text="Ausführbare Datei (.exe)", font=font_text, bg=BG_COLOR, fg=ACCENT_COLOR).pack(anchor="w")
+pfad_box = tk.Frame(frame_import, bg=BG_COLOR)
+pfad_box.pack(anchor="w", pady=(5, 15), fill=tk.X)
+pfad_eingabe = tk.Entry(pfad_box, font=font_text, width=32, bg=BTN_BG, fg=TEXT_COLOR, insertbackground=TEXT_COLOR, relief="flat")
+pfad_eingabe.pack(side=tk.LEFT, ipady=5, padx=(0,10))
+StyledButton(pfad_box, text="Durchsuchen", command=datei_waehlen).pack(side=tk.LEFT)
+
+eigenes_prefix_var = tk.BooleanVar()
+tk.Checkbutton(frame_import, text="Eigenes Präfix erstellen (Sonst Goldberg)", variable=eigenes_prefix_var, bg=BG_COLOR, fg=TEXT_COLOR, selectcolor=BTN_BG, activebackground=BG_COLOR, activeforeground=TEXT_COLOR).pack(anchor="w", pady=15)
+
+ActionButton(frame_import, text="Zu Lutris hinzufügen", command=skript_erstellen).pack(anchor="w", pady=20)
+
+
+# --- TAB 2: BACKUP ---
+tk.Label(frame_backup, text="System Backup", font=font_titel, bg=BG_COLOR, fg=TEXT_COLOR).pack(anchor="w", pady=(0, 20))
+
+tk.Label(frame_backup, text="Backup Speicherort:", font=font_text, bg=BG_COLOR, fg=ACCENT_COLOR).pack(anchor="w")
+backup_box = tk.Frame(frame_backup, bg=BG_COLOR)
+backup_box.pack(anchor="w", pady=(5, 20), fill=tk.X)
+
+aktueller_backup_pfad_var = tk.StringVar(value=app_config["backup_dir"])
+tk.Entry(backup_box, textvariable=aktueller_backup_pfad_var, font=font_text, width=32, bg=BTN_BG, fg="gray", relief="flat").pack(side=tk.LEFT, ipady=5, padx=(0,10))
+StyledButton(backup_box, text="Ändern", command=backup_ordner_aendern).pack(side=tk.LEFT)
+
+tk.Label(frame_backup, text="Sichern", font=font_sub, bg=BG_COLOR, fg=TEXT_COLOR).pack(anchor="w", pady=(10, 5))
+
+box1 = tk.Frame(frame_backup, bg=BG_COLOR)
+box1.pack(anchor="w", fill=tk.X, pady=5)
+StyledButton(box1, text="Nur Profile", command=backup_nur_profile).pack(side=tk.LEFT, padx=(0, 15))
+tk.Label(box1, text="Sichert nur die .yml Configs", bg=BG_COLOR, fg="gray", font=("Helvetica Neue", 9)).pack(side=tk.LEFT)
+
+box2 = tk.Frame(frame_backup, bg=BG_COLOR)
+box2.pack(anchor="w", fill=tk.X, pady=5)
+ActionButton(box2, text="Vollständiges Backup", command=backup_komplett).pack(side=tk.LEFT, padx=(0, 15))
+tk.Label(box2, text="Profile, Spielzeit & GamePrefixes (.tar.gz)", bg=BG_COLOR, fg="gray", font=("Helvetica Neue", 9), justify=tk.LEFT).pack(side=tk.LEFT)
+
+tk.Frame(frame_backup, height=1, bg=BTN_BG).pack(fill=tk.X, pady=20)
+
+tk.Label(frame_backup, text="Wiederherstellen (Restore)", font=font_sub, bg=BG_COLOR, fg=TEXT_COLOR).pack(anchor="w", pady=(0, 10))
+
+box3 = tk.Frame(frame_backup, bg=BG_COLOR)
+box3.pack(anchor="w", fill=tk.X, pady=5)
+StyledButton(box3, text="Einzelnes Spiel", command=restore_einzeln).pack(side=tk.LEFT, padx=(0, 15))
+tk.Label(box3, text="Importiert ein Backup mit Pfad-Anpassung", bg=BG_COLOR, fg="gray", font=("Helvetica Neue", 9)).pack(side=tk.LEFT)
+
+box4 = tk.Frame(frame_backup, bg=BG_COLOR)
+box4.pack(anchor="w", fill=tk.X, pady=5)
+StyledButton(box4, text="Bulk Restore", command=restore_bulk).pack(side=tk.LEFT, padx=(0, 15))
+tk.Label(box4, text="Stellt alle Spiele aus dem Backup nacheinander her", bg=BG_COLOR, fg="gray", font=("Helvetica Neue", 9)).pack(side=tk.LEFT)
+
+tk.Frame(frame_backup, height=1, bg=BTN_BG).pack(fill=tk.X, pady=20)
+tk.Label(frame_backup, text="System-Integration", font=font_sub, bg=BG_COLOR, fg=TEXT_COLOR).pack(anchor="w")
+
+box5 = tk.Frame(frame_backup, bg=BG_COLOR)
+box5.pack(anchor="w", fill=tk.X, pady=10)
+StyledButton(box5, text="App ins Startmenü einfügen", command=starter_erstellen).pack(side=tk.LEFT, padx=(0, 15))
+tk.Label(box5, text="Erstellt eine .desktop Datei für dein Menü", bg=BG_COLOR, fg="gray", font=("Helvetica Neue", 9)).pack(side=tk.LEFT)
+
+
+# --- TAB 3: SUNSHINE (NEU) ---
+tk.Label(frame_sunshine, text="Sunshine Sync", font=font_titel, bg=BG_COLOR, fg=TEXT_COLOR).pack(anchor="w", pady=(0, 20))
+
+tk.Label(frame_sunshine, text="Hier kannst du deine aktuellen Lutris-Spiele\ndirekt an Sunshine übergeben.", 
+         font=font_text, bg=BG_COLOR, fg=TEXT_COLOR, justify=tk.LEFT).pack(anchor="w", pady=(0, 20))
+
+ActionButton(frame_sunshine, text="Spiele synchronisieren", command=sunshine_sync_starten).pack(anchor="w", pady=10)
+
+
+# Startscreen festlegen
+zeige_frame(frame_import)
+fenster.mainloop()
