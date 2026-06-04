@@ -175,30 +175,56 @@ script:
 # FUNKTIONEN FÜR SUNSHINE
 # ==========================================
 def sunshine_sync_starten():
+    # 1. Prüfen, ob Sunshine im Hintergrund läuft
+    try:
+        # pgrep sucht case-insensitive (-i) nach dem Prozess "sunshine"
+        check_sunshine = subprocess.run(["pgrep", "-i", "sunshine"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        
+        # returncode 0 bedeutet: Prozess gefunden. Alles andere bedeutet: läuft nicht.
+        if check_sunshine.returncode != 0:
+            messagebox.showwarning(
+                "Sunshine nicht aktiv", 
+                "Bitte starte zuerst Sunshine!\n\nDas Tool kann die Spiele nicht übergeben, solange der Sunshine-Dienst nicht läuft."
+            )
+            return # Bricht die Funktion hier ab
+    except Exception as e:
+        # Falls der pgrep-Befehl aus unerfindlichen Gründen fehlschlägt, loggen wir das nur
+        print(f"Hinweis: Prozessprüfung übersprungen ({e})")
+
+    # 2. Prüfen, ob das Tool existiert
     tool_pfad = os.path.join(script_dir, "lutristosunshine")
     
     if not os.path.exists(tool_pfad):
         messagebox.showerror("Fehler", f"Das Tool wurde nicht gefunden:\n{tool_pfad}\n\nBitte stelle sicher, dass es im selben Ordner wie dieses Skript liegt.")
         return
         
+    # 3. Tool in einem neuen Terminal starten
     try:
-        # Cursor auf Ladesymbol ändern
-        fenster.config(cursor="watch")
-        fenster.update()
+        terminals = [
+            ["gnome-terminal", "--", tool_pfad],
+            ["konsole", "-e", tool_pfad],
+            ["xfce4-terminal", "-e", tool_pfad],
+            ["x-terminal-emulator", "-e", tool_pfad],
+            ["xterm", "-e", tool_pfad]
+        ]
+
+        erfolgreich_gestartet = False
         
-        # Tool ausführen
-        result = subprocess.run([tool_pfad], capture_output=True, text=True, check=True)
-        messagebox.showinfo("Sunshine Sync Erfolgreich", "Die Lutris-Spiele wurden erfolgreich an Sunshine übergeben!")
-        
-    except subprocess.CalledProcessError as e:
-        messagebox.showerror("Fehler beim Ausführen", f"Das Tool 'lutristosunshine' gab einen Fehler zurück.\n\nExit Code: {e.returncode}\nFehler-Ausgabe:\n{e.stderr}")
+        for cmd in terminals:
+            try:
+                subprocess.Popen(cmd)
+                erfolgreich_gestartet = True
+                break
+            except FileNotFoundError:
+                continue
+                
+        if not erfolgreich_gestartet:
+            messagebox.showerror("Fehler", "Es konnte kein passender Terminal-Emulator gefunden werden, um das Tool zu starten.")
+            
     except PermissionError:
-        messagebox.showerror("Berechtigungsfehler", "Die Datei 'lutristosunshine' darf nicht ausgeführt werden.\nBitte führe 'chmod +x lutristosunshine' im Terminal aus.")
+        messagebox.showerror("Berechtigungsfehler", "Die Datei 'lutristosunshine' darf nicht ausgeführt werden.\nBitte führe 'chmod +x lutristosunshine' aus.")
     except Exception as e:
-        messagebox.showerror("Unerwarteter Fehler", f"Konnte das Tool nicht starten:\n{e}")
-    finally:
-        # Cursor zurücksetzen
-        fenster.config(cursor="")
+        messagebox.showerror("Unerwarteter Fehler", f"Konnte das Terminal nicht starten:\n{e}")
 
 # ==========================================
 # FUNKTIONEN FÜR BACKUP & RESTORE
